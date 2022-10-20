@@ -1,0 +1,381 @@
+---
+title: "finalprojectcode"
+author: "Tong Su"
+date: "12/11/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(car)
+library(patchwork)
+library(janitor)
+```
+
+```{r}
+thedata <- read_csv("2020_ontario_public_library_statistics_open_data.csv")
+```
+
+
+```{r}
+thedata <- clean_names(thedata)
+```
+
+```{r}
+thedata <- thedata %>%
+  mutate(total_funds = b4_02_1_total_funds_not_including_employee_benefits+b4_02_2_employee_benefits,
+         number_of_resources=b4_01_1_general_include_all_physical_items_that_are_not_electronic_e_g_books_periodicals_etc + b4_01_2_electronic_e_g_electronic_subscriptions_and_other_databases_downloadable_media_gaming_software_playaway_dv_ds_and_e_resources,
+         number_of_visitors=g1_5_1_w_no_of_visits_to_the_library_made_in_person+g1_5_2_w_no_of_electronic_visits_to_the_library_website,
+         region = ifelse(a1_3_ontario_library_service_ols_region_english == "Southern Ontario Library Service", "South","North"))
+```
+
+```{r}
+thedata <- thedata %>%
+  filter(number_of_visitors<10000)
+
+thedata <- thedata %>%
+  filter(number_of_visitors>0)
+```
+
+
+```{r}
+thedata <- thedata %>% 
+  dplyr::select(a1_14_no_of_active_library_cardholders, 
+         b2_9_total_operating_revenues,
+         b5_0_total_operating_expenditures,
+         e7_1_in_the_space_provided_please_provide_the_total_combined_square_footage_of_all_the_facilities_in_your_library_system,
+         g1_1_3_w_total_circulation_of_all_library_materials,
+         total_funds,
+         number_of_resources,
+         number_of_visitors,
+         region,
+         library_full_name) 
+```
+
+```{r}
+thedata <-rename(thedata, number_of_cardholders=a1_14_no_of_active_library_cardholders, 
+         total_operating_revenues=b2_9_total_operating_revenues,
+         total_operating_expenditures=b5_0_total_operating_expenditures,
+         total_space_provided=e7_1_in_the_space_provided_please_provide_the_total_combined_square_footage_of_all_the_facilities_in_your_library_system,
+         total_circulation_of_materials=g1_1_3_w_total_circulation_of_all_library_materials,
+         Name = library_full_name)
+
+```
+
+```{r}
+nrow(thedata)
+```
+
+
+```{r}
+# create a 50/50 split in the data
+set.seed(1)
+train <- thedata[sample(1:nrow(thedata), 135, replace=F), ]
+test <- thedata[which(!(thedata$Name %in% train$Name)),]
+```
+
+```{r}
+summary(train$number_of_visitors)
+summary(train$number_of_resources)
+summary(train$number_of_cardholders)
+summary(train$total_funds)
+summary(train$total_operating_revenues)
+summary(train$total_operating_expenditures)
+summary(train$total_space_provided)
+summary(train$total_circulation_of_materials)
+```
+
+```{r}
+summary(test$number_of_visitors)
+summary(test$number_of_resources)
+summary(test$number_of_cardholders)
+summary(test$total_funds)
+summary(test$total_operating_revenues)
+summary(test$total_operating_expenditures)
+summary(test$total_space_provided)
+summary(test$total_circulation_of_materials)
+```
+
+```{r}
+sd(train$number_of_visitors)
+sd(train$number_of_resources)
+sd(train$number_of_cardholders)
+sd(train$total_funds)
+sd(train$total_operating_revenues)
+sd(train$total_operating_expenditures)
+sd(train$total_space_provided)
+sd(train$total_circulation_of_materials)
+```
+```{r}
+sd(test$number_of_visitors)
+sd(test$number_of_resources)
+sd(test$number_of_cardholders)
+sd(test$total_funds)
+sd(test$total_operating_revenues)
+sd(test$total_operating_expenditures)
+sd(test$total_space_provided)
+sd(test$total_circulation_of_materials)
+```
+
+
+
+```{r}
+# EDA of the response variable
+train %>% 
+  ggplot(aes(x=number_of_visitors)) +
+  geom_histogram(colour="black", fill="firebrick", alpha=0.5) +
+  labs(x="Total number of visitors", y = "Number of Libraries" , title = "Fig 1. Histogram of the total number of visitors") 
+```
+
+```{r}
+#primary full model
+model_full <- lm(number_of_visitors ~ . -Name, data=train)
+```
+
+```{r}
+response <- fitted(model_full)
+fitted_values <- train$number_of_visitors
+
+plot(fitted_values, response)
+
+```
+
+```{r}
+pairs(~number_of_cardholders+total_operating_revenues+total_operating_expenditures+total_space_provided+total_circulation_of_materials+total_funds+number_of_resources, data=train)
+```
+
+```{r}
+res<-rstandard(model_full)
+y_hat <- fitted(model_full)
+
+plot(y_hat, res)
+```
+
+```{r}
+qqnorm(res)
+qqline(res)
+```
+
+```{r}
+train <- train %>%
+  mutate(total_space_provided = total_space_provided+0.00000000000001,
+         total_funds = total_funds+0.00000000000001,
+         number_of_resources = number_of_resources+0.00000000000001)
+boxCox(model_full)
+summary(powerTransform(cbind(train$number_of_cardholders,
+                             train$total_operating_revenues,
+                             train$total_operating_expenditures,
+                             train$total_space_provided,
+                             train$total_circulation_of_materials,
+                             train$total_funds,
+                             train$number_of_resources)))
+```
+```{r}
+train_trans <- train %>%
+  mutate(number_of_cardholders=number_of_cardholders^(0.2),
+                             total_operating_revenues=total_operating_revenues^(0.2),
+                             total_operating_expenditures=total_operating_expenditures^(0.2),
+                             total_space_provided=total_space_provided^(0.2),
+                             total_circulation_of_materials=total_circulation_of_materials^(0.2),
+                             total_funds=total_funds^(0.2),
+                             number_of_resources=number_of_resources^(0.2),
+         number_of_visitors=number_of_visitors^(0.2))
+```
+
+```{r}
+model_trans_full <- lm(number_of_visitors ~ . -Name, data=train_trans)
+```
+
+```{r}
+response_trans <- fitted(model_trans_full)
+fitted_values_trans <- train_trans$number_of_visitors
+plot(fitted_values_trans, response_trans)
+
+```
+
+```{r}
+pairs(~number_of_cardholders+total_operating_revenues+total_operating_expenditures+total_space_provided+total_circulation_of_materials+total_funds+number_of_resources, data=train_trans)
+```
+
+```{r}
+res_trans<-rstandard(model_trans_full)
+y_hat_trans <- fitted(model_trans_full)
+
+plot(y_hat_trans, res_trans)
+```
+```{r}
+qqnorm(res_trans)
+qqline(res_trans)
+```
+
+
+
+```{r}
+library(MASS)
+
+stepAIC(model_trans_full, direction="both", k=2)
+```
+
+```{r}
+model_AIC <- lm(number_of_visitors~ total_operating_revenues+total_circulation_of_materials, data=train_trans)
+```
+
+
+```{r}
+stepAIC(model_trans_full, direction="both", k=log(nrow(train_trans)))
+```
+
+```{r}
+summary(model_trans_full)
+```
+
+```{r}
+model_BIC <- lm(number_of_visitors~total_circulation_of_materials, data=train_trans)
+```
+
+
+```{r}
+test_trans <- test %>%
+  mutate(number_of_cardholders=number_of_cardholders^(0.2),
+                             total_operating_revenues=total_operating_revenues^(0.2),
+                             total_operating_expenditures=total_operating_expenditures^(0.2),
+                             total_space_provided=total_space_provided^(0.2),
+                             total_circulation_of_materials=total_circulation_of_materials^(0.2),
+                             total_funds=total_funds^(0.2),
+                             number_of_resources=number_of_resources^(0.2),
+         number_of_visitors=number_of_visitors^(0.2))
+```
+
+```{r}
+model_AIC_test <- lm(number_of_visitors~ total_operating_revenues+total_circulation_of_materials,  data=test_trans)
+```
+
+```{r}
+model_BIC_test <- lm(number_of_visitors~ total_circulation_of_materials,  data=test_trans)
+```
+
+```{r}
+summary(model_AIC)
+AIC(model_AIC)
+BIC(model_AIC)
+```
+
+```{r}
+summary(model_AIC_test)
+AIC(model_AIC_test)
+BIC(model_AIC_test)
+```
+
+```{r}
+# Compare leverage test with AIC
+
+h_AIC <- hatvalues(model_AIC)
+leverage <- 2*(length(model_AIC$coefficients)/nrow(train_trans))
+which(h_AIC>leverage)
+h_AIC_test <- hatvalues(model_AIC_test)
+leverage_test <- 2*(length(model_AIC_test$coefficients)/nrow(test_trans))
+which(h_AIC_test>leverage_test)
+```
+
+```{r}
+# Compare outlier test with AIC
+outlier_AIC <- rstandard(model_AIC)
+which (abs(outlier_AIC)>4)
+outlier_AIC_test <- rstandard(model_AIC_test)
+which (abs(outlier_AIC_test)>4)
+```
+
+```{r}
+# Compare influential test with AIC
+influential_AIC <- cooks.distance(model_AIC)
+cutoff_AIC <- qf(0.5, length(model_AIC$coefficients),
+                 nrow(train_trans)-length(model_AIC$coefficients))
+which(influential_AIC> cutoff_AIC)
+influential_AIC_test <- cooks.distance(model_AIC_test)
+cutoff_AIC_test <- qf(0.5, length(model_AIC_test$coefficients),
+                 nrow(test_trans)-length(model_AIC_test$coefficients))
+which(influential_AIC_test> cutoff_AIC_test)
+```
+
+```{r}
+summary(model_BIC)
+AIC(model_BIC)
+BIC(model_BIC)
+```
+
+```{r}
+summary(model_BIC_test)
+AIC(model_BIC_test)
+BIC(model_BIC_test)
+```
+
+```{r}
+# Compare leverage test with BIC
+h_BIC <- hatvalues(model_BIC)
+leverage_BIC <- 2*(length(model_BIC$coefficients)/nrow(train_trans))
+which(h_BIC>leverage_BIC)
+
+h_BIC_test <- hatvalues(model_BIC_test)
+leverage_BIC_test <- 2*(length(model_BIC_test$coefficients)/nrow(test_trans))
+which(h_BIC_test>leverage_test)
+```
+
+```{r}
+# Compare outlier test with BIC
+outlier_BIC <- rstandard(model_BIC)
+which (abs(outlier_BIC)>4)
+outlier_BIC_test <- rstandard(model_BIC_test)
+which (abs(outlier_BIC_test)>4)
+```
+
+```{r}
+# Compare influential test with BIC
+influential_BIC <- cooks.distance(model_BIC)
+cutoff_BIC <- qf(0.5, length(model_BIC$coefficients),
+                 nrow(train_trans)-length(model_BIC$coefficients))
+which(influential_BIC> cutoff_BIC)
+influential_BIC_test <- cooks.distance(model_BIC_test)
+cutoff_BIC_test <- qf(0.5, length(model_BIC_test$coefficients),
+                 nrow(test_trans)-length(model_BIC_test$coefficients))
+which(influential_BIC_test> cutoff_BIC_test)
+```
+
+```{r}
+#Recheck condition1
+response_final <- fitted(model_AIC)
+fitted_values_final <- train_trans$number_of_visitors
+plot(fitted_values_final, response_final)
+```
+
+```{r}
+#Recheck condition2
+pairs(~number_of_cardholders+total_circulation_of_materials+number_of_resources, data=train_trans)
+```
+
+```{r}
+
+residuals<-rstandard(model_AIC)
+fitted_values <- fitted(model_AIC)
+par(mfrow=c(1,2)) 
+plot(fitted_values, residuals)
+qqnorm(residuals)
+qqline(residuals)
+```
+
+
+
+
+```{r}
+
+vif(model_AIC)
+```
+
+
+```{r}
+anova(model_AIC, model_trans_full)
+```
+
